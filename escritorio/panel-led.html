@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Panel LED</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #080305; overflow: hidden; cursor: pointer; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #ayuda { position: fixed; bottom: 12px; width: 100%; text-align: center; color: #ffffff55;
+           font: 14px sans-serif; transition: opacity 1s; pointer-events: none; }
+</style>
+</head>
+<body>
+<canvas id="panel"></canvas>
+<div id="ayuda">Clic: cambiar color · F11: pantalla completa</div>
+<script>
+// Versión de escritorio del panel LED de la app Android (misma lógica que LedView.kt).
+const MENSAJE = 'Bienvenidos ★ Panel LED ★';
+const FILAS = 24;
+const VELOCIDAD = 14;               // columnas de LEDs por segundo
+const MODOS = ['rosa', 'rojo', 'dorado', 'arcoiris'];
+let modo = 0;
+
+// El texto se dibuja una vez en un canvas de FILAS píxeles de alto; cada píxel es un LED.
+const tmp = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+const fuente = `bold ${FILAS * 0.82}px "Segoe UI", "Segoe UI Emoji", sans-serif`;
+tmp.font = fuente;
+const columnas = Math.ceil(tmp.measureText(MENSAJE).width) + 2;
+tmp.canvas.width = columnas;
+tmp.canvas.height = FILAS;
+tmp.font = fuente;
+tmp.fillStyle = '#fff';
+tmp.textBaseline = 'middle';
+tmp.fillText(MENSAJE, 1, FILAS / 2 + 1);
+const px = tmp.getImageData(0, 0, columnas, FILAS).data;
+
+const tipo = new Uint8Array(columnas * FILAS);     // 0 apagado, 1 letra, 2 emoji
+const colorEmoji = new Array(columnas * FILAS);
+for (let i = 0; i < tipo.length; i++) {
+  const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2], a = px[i * 4 + 3];
+  if (a < 110) continue;
+  if (Math.max(r, g, b) - Math.min(r, g, b) > 40) {
+    tipo[i] = 2;
+    colorEmoji[i] = `rgb(${r},${g},${b})`;
+  } else {
+    tipo[i] = 1;
+  }
+}
+
+function colorLetra(col, t) {
+  switch (MODOS[modo]) {
+    case 'rosa': return 'rgb(255,79,163)';
+    case 'rojo': return 'rgb(255,30,60)';
+    case 'dorado': return 'rgb(255,200,61)';
+    default: return `hsl(${(col * 4 + t * 120) % 360},90%,58%)`;
+  }
+}
+
+const canvas = document.getElementById('panel');
+const ctx = canvas.getContext('2d');
+function ajustar() {
+  canvas.width = innerWidth * devicePixelRatio;
+  canvas.height = innerHeight * devicePixelRatio;
+}
+addEventListener('resize', ajustar);
+ajustar();
+
+let desplazamiento = 0, anterior = null, tiempo = 0;
+function circulo(x, y, r, color, alfa) {
+  ctx.globalAlpha = alfa;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function cuadro(ahora) {
+  if (anterior !== null) {
+    const dt = (ahora - anterior) / 1000;
+    desplazamiento += VELOCIDAD * dt;
+    tiempo += dt;
+  }
+  anterior = ahora;
+
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#080305';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Panel centrado verticalmente, ocupando todo el ancho.
+  const led = Math.min(canvas.height / FILAS, canvas.width / 56);
+  const arriba = (canvas.height - led * FILAS) / 2;
+  const visibles = Math.ceil(canvas.width / led);
+  const vuelta = columnas + visibles;
+  const inicio = Math.floor(desplazamiento);
+
+  for (let x = 0; x < visibles; x++) {
+    const col = (inicio + x) % vuelta - visibles;
+    const cx = x * led + led / 2;
+    for (let y = 0; y < FILAS; y++) {
+      const cy = arriba + y * led + led / 2;
+      const i = y * columnas + col;
+      const t = col >= 0 && col < columnas ? tipo[i] : 0;
+      if (t === 0) {
+        circulo(cx, cy, led * 0.32, 'rgb(42,14,24)', 1);
+        continue;
+      }
+      const color = t === 2 ? colorEmoji[i] : colorLetra(col, tiempo);
+      circulo(cx, cy, led * 0.62, color, 0.27);
+      circulo(cx, cy, led * 0.40, color, 1);
+    }
+  }
+  requestAnimationFrame(cuadro);
+}
+requestAnimationFrame(cuadro);
+
+addEventListener('click', () => { modo = (modo + 1) % MODOS.length; });
+setTimeout(() => document.getElementById('ayuda').style.opacity = 0, 4000);
+</script>
+</body>
+</html>
